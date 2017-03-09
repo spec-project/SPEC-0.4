@@ -1,0 +1,393 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% SPEC                                                                     
+% Copyright (C) 2011-2017 Alwen Tiu, Ross Horne
+%
+% This program is free software; you can redistribute it and/or modify     
+% it under the terms of the GNU General Public License as published by     
+% the Free Software Foundation; either version 2 of the License, or        
+% (at your option) any later version.                                      
+%
+% This program is distributed in the hope that it will be useful,          
+% but WITHOUT ANY WARRANTY; without even the implied warranty of           
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the            
+% GNU General Public License for more details.                             
+%
+% You should have received a copy of the GNU General Public License        
+% along with this code; if not, write to the Free Software Foundation,     
+% Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA             
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Module for checking bi-trace consistency. This implements the
+% decision procedure described in 
+% [TD10] Alwen Tiu and Jeremy Dawson. "Automating Open Bisimulation Checking for the Spi-Calculus".
+% In Proceedings of the 23rd IEEE Computer Security Foundations Symposium, pp. 307 - 321, 2010. 
+
+
+#include "basic.def".
+#include "uni.def".
+#include "obsthy.def".
+#include "constraint-system2.def".
+
+% Input/output pairs:
+% in : term -> term -> bt_pair
+% out : term -> term -> bt_pair
+
+Kind bt_pair type.
+
+Type in	     tm -> tm -> bt_pair.
+Type out     tm -> tm -> bt_pair.
+
+Define mem_bitrace : tm -> tm -> list bt_pair -> prop
+by
+mem_bitrace M N (cons X L) := 
+  _if (det_or (X = (in M N)) (X = (out M N))) 
+      true
+      (mem_bitrace M N B).
+   
+% Print bitraces
+Define pbitrace : list bt_pair -> prop
+by 
+pbitrace nil ; 
+pbitrace (cons (in M N) L) :=
+  printstr "(" /\ print_term M /\ printstr ", " /\ print_term N /\ printstr ")^i." /\ 
+  pbitrace L ; 
+pbitrace (cons (out M N) L) :=
+  printstr "(" /\ print_term M /\ printstr ", " /\ print_term N /\ printstr ")^o." /\ 
+  pbitrace L.
+
+Define print_bitrace : list bt_pair -> prop
+by 
+print_bitrace H :=
+  printstr "[" /\ pbitrace H /\ printstr "]".
+
+% Bi-trace consistency
+
+% in_domain (var V) L := det_mem (sub (var V) T) L. 
+
+Define get_var_bt : list bt_pair -> list tm -> list tm -> prop 
+by 
+% get_var_bt H VarIn VarOut ; 
+get_var_bt nil VarIn VarIn ; 
+get_var_bt (cons P L) VarIn VarOut :=
+  det_or (P = (in X Y)) (P = (out X Y)) /\ 
+  get_var (pr X Y) VarIn Vs /\ 
+  get_var_bt L Vs VarOut. 
+
+Define bitrace_vars : list bt_pair -> list tm -> prop
+by 
+bitrace_vars H Vs := 
+  get_var_bt H nil Vars /\ 
+  reverse Vars Vs.
+  
+
+% prefix V H H'.
+% calculate the longest prefix H' of H which does not contain the variable V. 
+Define prefix : tm -> list bt_pair -> list bt_pair -> prop
+by 
+prefix V nil nil ; 
+prefix V (cons P L) Res :=
+  det_or (P = in X Y) (P = out X Y) /\
+  _if (not_free V (pr X Y))
+      (prefix V L Res1 /\ Res = cons P Res1)
+      (Res = nil).
+  
+% bt2thy H Thy.
+% throw away the input pairs, since we assume H is consistent.
+
+Define bt2thy : list bt_pair -> list thy_pair -> prop
+by 
+bt2thy nil nil ; 
+bt2thy (cons (in M N) H) Thy := bt2thy H Thy ; 
+bt2thy (cons (out M N) H) (cons (mp M N) Thy) := bt2thy H Thy.
+
+
+Define fCS1 : list tm -> list bt_pair -> list sub_pair -> 
+              list sub_pair -> list sub_pair -> prop
+by
+fCS1 nil H Sub1 Sub2_In Sub2_Out := reverse Sub2_In Sub2_Out; 
+fCS1 (cons V Vs) H Sub1 Sub2_In Sub2_Out :=
+  prefix V H H1 /\ bt2thy H1 Thy /\
+  copyterm Sub1 V M /\
+  apply_subst_thy Sub1 Sub2_In Thy Thy1 /\
+  reduce Thy1 Thy2 /\
+  deduce_r Thy2 M N /\
+  fCS1 Vs H Sub1 (cons (sub V N) Sub2_In) Sub2_Out .
+
+Define fun_CS1 : list tm -> list bt_pair -> list sub_pair -> list sub_pair -> prop
+by 
+fun_CS1 Vs H Sub1 Sub2 := fCS1 Vs H Sub1 nil Sub2.
+
+Define fCS2 : list tm -> list bt_pair -> list sub_pair -> 
+              list sub_pair -> list sub_pair -> prop
+by
+fCS2 nil H Sub2 Sub1_In Sub1_Out := reverse Sub1_In Sub1_Out ; 
+fCS2 (cons V Vs) H Sub2 Sub1_In Sub1_Out := 
+  prefix V H H1 /\ bt2thy H1 Thy /\
+  copyterm Sub2 V N /\
+  apply_subst_thy Sub1_In Sub2 Thy Thy1 /\ 
+  reduce Thy1 Thy2 /\
+  deduce_inv_r Thy2 N M /\
+  fCS2 Vs H Sub2 (cons (sub V M) Sub1_In) Sub1_Out.
+
+Define fun_CS2 : list tm -> list bt_pair -> list sub_pair -> list sub_pair -> prop
+by
+fun_CS2 Vs H Sub1 Sub2 := fCS2 Vs H Sub2 nil Sub1.
+
+Define project_mesg : nat -> bt_pair -> tm -> prop
+by
+project_mesg 1 (in M N) M ;
+project_mesg 1 (out M N) M ;
+project_mesg 2 (in M N) N ;
+project_mesg 2 (out M N) N.
+
+Define vars_cst	: list tm -> list tm -> list constraint -> prop
+by 
+vars_cst nil Pre nil ; 
+vars_cst (cons V L) Pre (cons (dedc Pre V) R) := vars_cst L Pre R.
+
+% Generate a deducibility constraint from a bi-trace.
+
+Define bitrace_cst : nat -> list bt_pair -> list tm -> list constraint -> prop
+by 
+bitrace_cst I nil Pre nil ; 
+bitrace_cst I (cons (in U V) H) Pre Cs :=
+  project_mesg I (in U V) M /\ 
+  bitrace_cst I H Pre Ds /\ 
+  get_var (pr U V) nil Vars /\ 
+  vars_cst Vars Pre Es /\ 
+  append Es (cons (dedc Pre M) Ds) Cs ; 
+bitrace_cst I (cons (out U V) H) Pre Cs :=
+  project_mesg I (out U V) M /\ 
+  bitrace_cst I H (cons M Pre) Cs. 
+  
+% The RC function
+
+Define fRC1 : list tm -> list bt_pair -> list constraint -> 
+              list sub_pair -> list sub_pair -> prop
+by 
+fRC1 Vs H Cs Sub1 Sub2 :=
+  _distinct (cs_solve_constraints Vs Cs Sub1) /\
+  fun_CS1 Vs H Sub1 Sub2.
+  
+Define fun_RC1 : list bt_pair -> constraint -> 
+                 list sub_pair -> list sub_pair -> prop
+by 
+fun_RC1 H C Sub1 Sub2 :=
+  bitrace_vars H Vs /\ 
+  bitrace_cst 1 H nil Cs /\ 
+  append Cs (cons C nil) Ds /\
+  fRC1 Vs H Ds Sub1 Sub2.
+
+Define fRC2 : list tm -> list bt_pair -> list constraint -> 
+              list sub_pair -> list sub_pair -> prop
+by 
+fRC2 Vs H Cs Sub1 Sub2 :=
+  _distinct(cs_solve_constraints Vs Cs Sub2) /\
+  fun_CS2 Vs H Sub1 Sub2.
+
+Define fun_RC2 : list bt_pair -> constraint -> 
+                 list sub_pair -> list sub_pair -> prop
+by
+fun_RC2 H C Sub1 Sub2 :=
+  bitrace_vars H Vs /\ 
+  bitrace_cst 2 H nil Cs /\
+  append Cs (cons C nil) Ds /\ 
+  fRC2 Vs H Ds Sub1 Sub2.
+  
+Define nam_fun_RS1 : list tm -> list constraint ->  %list bt_pair ->    Bitrace replaced by Var list and theory.
+                 list sub_pair -> list constraint -> list sub_pair ->
+                 list sub_pair -> list sub_pair -> prop
+by
+nam_fun_RS1 OriVars Cs Sub Ds Sol Sub1 Sub2 :=
+  %bitrace_vars H OriVars /\  Now passed as parameter, so need not be recalculated.
+  %bitrace_cst 1 H nil Cs /\
+  cs_apply_list Sub Cs Ds /\
+  cs_constraints_vars Ds CstVars /\ 
+  _distinct(cs_solve_constraints CstVars Ds Sol) /\
+  compose OriVars Sub Sol Sub1 /\
+  fun_CS1 OriVars H Sub1 Sub2.
+
+Define fun_RS2 : list bt_pair -> list sub_pair -> list sub_pair ->
+                 list sub_pair -> list sub_pair -> prop
+by
+fun_RS2 H Sub Sol Sub1 Sub2 :=
+  bitrace_vars H OriVars /\
+  bitrace_cst 2 H nil Cs /\ 
+  cs_apply_list Sub Cs Ds /\
+  cs_constraints_vars Ds CstVars /\ 
+  _distinct(cs_solve_constraints CstVars Ds Sol) /\ 
+  compose OriVars Sub Sol Sub2 /\
+  fun_CS2 OriVars H Sub1 Sub2.
+
+% apply a substitution pair to a bitrace
+
+Define apply_subst_bt : list sub_pair -> list sub_pair -> list bt_pair ->
+                        list bt_pair -> prop
+by 
+apply_subst_bt Sub1 Sub2 nil nil ; 
+apply_subst_bt Sub1 Sub2 (cons (in M N) L) (cons (in U V) R) :=
+  copyterm Sub1 M U /\ copyterm Sub2 N V /\ 
+  apply_subst_bt Sub1 Sub2 L R ; 
+apply_subst_bt Sub1 Sub2 (cons (out M N) L) (cons (out U V) R) :=
+  copyterm Sub1 M U /\ copyterm Sub2 N V /\ 
+  apply_subst_bt Sub1 Sub2 L R.
+
+
+
+
+
+% Begin Nam fun.
+Define fun_Nam : list tm -> list constraint_pair -> return_form -> prop
+by
+fun_Nam Vs Cs Return_Val :=
+  flex_subst Vs FSub /\
+  id_subst Vs IdSubst /\
+  cs_apply_list_pair 2 FSub Cs CsI /\
+  cs_solve_pair Vs nil CsI IdSubst LSubstOut nil nil SolvedForm /\
+  concretize FSub /\
+  _abstract (solved_form_and_substitution SolvedForm LSubstOut FSub) var_abs_return_form Return_Val1 /\ 
+  solved_form_apply_var Return_Val1 Return_Val .
+%----------- END Nam fun ----------------
+
+
+Define apply_RC : list tm -> list thy_pair -> list constraint_pair ->
+                  list tm -> list thy_pair -> list constraint_pair -> prop
+by 
+
+% Symmetric encryption.
+apply_RC Vars_in Thy_in Cs_in Vars_in Thy_out Cs_out := 
+  (select Thy_in (mp (en M N) (en R T)) Rest \/
+   select Thy_in (mp (blind M N) (blind R T)) Rest) /\ 
+  %split_thy Rest S1 S2 /\ 
+  %C1 = (dedl S1 N) /\
+  %C2 = (dedl S2 T) /\ 
+  append Cs_in (cons (dedc_pair Rest (mp N T)) nil) Cs_in1 /\ % Cases where no unifier is required are processes already by reducing the theory.
+  (fun_Nam Vars_in Cs_in1 (solved_form_and_substitution Cs_out Sol Sub2)) /\ 
+  compose OriVars Sub Sol Sub1 /\ 
+  apply_thy_both Sub1 Sub2 Thy Thy2 ; 
+                             %  (nam_fun_2 Vars_in Thy_in Cs_in1 Vs_out Thy_out Cs_out Sub1 Sub2 /\ is_solved Cs_out)) ;   !!! Needed, for bisim, but ommitted temporarily for sim
+  %apply_subst_bt Sub1 Sub2 H_in H_out /\ % not needed since performed in nam_fun.
+  %apply_subst_thy  Sub1 Sub2 Thy_in Thy /\ % not needed since performed in nam_fun.
+  %reduce Thy Thy_out; % performed at top of bt_cst_aux.
+
+% Asymmetric Encryption
+apply_RC Vars_in Thy_in Cs_in Vars_in Thy_out Cs_out := 
+  select Thy_in (mp (aen M (pub N)) (aen R (pub T)))  Rest /\ 
+  %split_thy Rest S1 S2 /\ 
+  %C1 = (dedl S1 N) /\
+  %C2 = (dedl S2 T) /\ 
+  append Cs_in (cons (dedc_pair Rest (mp N T)) nil) Cs_in1 /\ 
+  (fun_Nam Vars_in Cs_in1 (solved_form_and_substitution Cs_out Sol Sub2)) /\ 
+              % (nam_fun_2 Vars_in Thy_in Cs_in1 Vs_out Thy_out Cs_out Sub1 Sub2 /\ is_solved Cs_out)) ;  Reverse direction required for bisim.
+  compose Vars_in Sub Sol Sub1 /\ 
+  apply_thy_both Sub1 Sub2 Thy Thy_out ;
+%  (fun_RC1 H_in C1 Sub1 Sub2 \/ fun_RC2 H_in C2 Sub1 Sub2) /\
+%  apply_subst_bt Sub1 Sub2 H_in H_out /\
+%  apply_subst_thy  Sub1 Sub2 Thy_in Thy /\
+%  reduce Thy Thy_out;
+
+% Special case for aenc and variables.
+% This seems to be redundant since \Gamma |- (var x) <-> (var x) always, hence (aen M (var X)) <-> (aen R (var X)) --reduce--> M <-> R !!!!!!!!!!!!!!!!!!!!!!
+% To fix this decom_enc_aenc in obsthy.def should be defined as follows. The current implementation is baffling!!
+%  decom_enc_aenc (cons (mp (aen U V) (aen R T)) Thy) NE1 E1 NE2 E2 :=
+%    append NE1 E1 Thy1 /\ 
+%    append Thy1 Thy Thy2 /\
+%    _if (V = pub K /\ T = pub M /\ deduce_r Thy2 U R /\ deduce_r Thy2 V T)
+%	(
+%	    decom_enc_aenc Thy NE1 E1 NE2 E2
+%	)
+%	(
+%	    _if (deduce_r Thy2 V T)
+%		(
+%		    decom_pair (cons (mp U R) Thy) NewThy /\ 
+%		    decom_enc_aenc NewThy NE1 E1 NE2 E2
+%		)
+%		(
+%		    insert (mp (aen U V) (aen R T)) E1 NewE1 /\ 
+%		    decom_enc_aenc Thy NE1 NewE1 NE2 E2
+%		)
+%	) ;
+% Possibly the consistency condition should also be updated.
+%Define thy_cc4 : list thy_pair -> prop
+%by
+%thy_cc4 Thy :=
+%  split_thy Thy S1 S2 /\ 
+%  forall M1 N1 M2 N2, member (mp (aen M1 (pub N1)) (aen M2 (pub N2))) Thy 
+%      -> (ded1_r S1 N1 -> false) /\ (ded1_r S2 N2 -> false) /\ (ded1_r S1 M1 /\ ded1_r S1 pub(N1) -> false) /\ (ded1_r S1 M1 /\ ded1_r S1 pub(N1) -> false). 
+% Not so sure this is necessary though.
+apply_RC Vars_in Thy_in Cs_in Vars_out Thy_out Cs_out := 
+  select Thy_in (mp (aen M (var X)) (aen R (var X))) Rest /\
+  Subst = (cons (sub (var X) (pub (var X))) nil) /\
+  cs_apply_list_pair_both Subst Subst Cs_in Cs_out /\
+  apply_thy_both Subst Subst Thy_in Thy_out /\
+  apply_RC Vars_in Thy_in Cs_in Vars_out Thy_out Cs_out;
+
+apply_RC Vars_in Thy_in Cs_in Vars_out Thy_out Cs_out := 
+  select Thy_in (mp (blind M N) (blind R T)) Rest /\ 
+  append Cs_in (cons (dedc_pair Rest (mp N T)) nil) Cs_in1 /\ 
+  (fun_Nam Vars_in Cs_in1 (solved_form_and_substitution Cs_out Sol Sub2)) /\
+  compose Vars_in Sub Sol Sub1 /\ 
+  apply_thy_both Sub1 Sub2 Thy Thy_out
+  .
+%((nam_fun_1 Vars_in Thy_in Cs_in1 Vs_out Thy_out Cs_out Sub1 Sub2 /\ is_solved Cs_out) \/ 
+ %  (nam_fun_2 Vars_in Thy_in Cs_in1 Vs_out Thy_out Cs_out Sub1 Sub2 /\ is_solved Cs_out)) .
+
+
+
+
+
+
+
+
+Define apply_RS_nd : list tm -> list thy_pair -> list constraint_pair ->
+                  list tm -> list thy_pair -> list constraint_pair -> prop
+by 
+apply_RS_nd Vars_in Thy_in Cs_in Vars_out Thy_out Cs_out :=
+  %bitrace_vars H_in Vars /\
+  select Thy_in (mp M1 M2) Rest1 /\
+  select Rest1 (mp N1 N2) Rest2 /\ 
+  (
+   (unify nil M1 N1 Vars_in Subst /\ 
+    (fun_Nam Vars_in Cs_in1 (solved_form_and_substitution Cs_out Sol Sub2)) /\
+     compose Vars_in Sub Sol Sub1 /\ 
+     apply_thy_both Sub1 Sub2 Thy Thy_out  %nam_fun_RS1 Vars_in Thy_in Cs_in Subst Sol Vars_out Thy_out Cs_out Sub1 Sub2 /\ is_solved Cs_out
+   ) 
+  % \/ (unify nil M2 N2 Vars_in Subst /\ nam_fun_RS2 Vars_in Thy_in Cs_in Subst Sol Vars_out Thy_out Cs_out Sub1 Sub2 /\ is_solved Cs_out)  %%!!! The other direction is needed for bisimulation!!!
+  ) .
+  %apply_subst_bt Sub1 Sub2 H_in H_out /\
+  %apply_subst_thy Sub1 Sub2 Thy_in Thy /\
+  %reduce Thy_out Thy_out1. % Reduce performed at beginning of bt_cst_aux.
+
+
+% [bt_cst_aux] This exhausts all possible rewrites of a
+% bi-trace- and-theory configuration. Tabled for efficiency. 
+
+Define inductive bt_cst_aux_nd : list tm -> list thy_pair -> list constraint_pair -> prop
+by 
+bt_cst_aux_nd Vs Thy0 Cs :=
+  reduce Thy0 Thy /\
+  thy_red_consistent Thy /\ 
+  (forall Vs1 Thy1 Cs1, apply_RC Vs Thy Cs Vs1 Thy1 Cs1 -> bt_cst_aux_nd Vs1 Thy1 Cs1) /\ 
+  (forall Vs1 Thy1 Cs1, apply_RS_nd Vs Thy Cs Vs1 Thy1 Cs1 -> bt_cst_aux_nd Vs1 Thy1 Cs1).
+
+
+%Define bt_consistent_iter : list bt_pair -> list thy_pair -> list bt_pair -> prop 
+%by   % Checks that, for every substitution theta respecting Cs, Thy theta is a consistent theory.
+%bt_consistent_iter Bt_Pre Thy_Pre nil ;
+%bt_consistent_iter Bt_Pre Thy_Pre (cons (in M N) H) :=
+%  deduce_r Thy_Pre M N /\  % This is part of a "solved form" check.
+%  append Bt_Pre (cons (in M N) nil) NewBt /\ 
+%  bt_consistent_iter NewBt Thy_Pre H ;  
+%bt_consistent_iter Bt_Pre Thy_Pre (cons (out M N) H) :=
+%  reduce (cons (mp M N) Thy_Pre) NewThy /\ 
+%  bt_cst_aux Bt_Pre NewThy /\
+%  append Bt_Pre (cons (out M N) nil) NewBt /\ 
+%  bt_consistent_iter NewBt NewThy H.
+%Define bt_consistent : list bt_pair -> prop
+%by 
+%bt_consistent H := 
+%  bt_consistent_iter nil nil H.
+
+
+
+
