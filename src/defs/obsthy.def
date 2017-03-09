@@ -54,7 +54,7 @@ pthy (cons (mp M N) (cons P L)) :=
 Define print_thy : list thy_pair -> prop 
 by 
 print_thy Thy :=
-  printstr "\n{" /\ pthy Thy /\ printstr "}".
+  printstr "{" /\ pthy Thy /\ printstr "}".
  
 % Right-deducibility relation for message indistinguishability
 
@@ -242,8 +242,8 @@ decom_enc_aenc (cons (mp (blind U V) (blind R T)) Thy) NE1 E1 NE2 E2 :=
   append Thy1 Thy Thy2 /\ 
   _if (deduce_r Thy2 V T)
       (
-	decom_pair (cons (mp U R) Thy) NewThy /\ 
-        decom_enc_aenc NewThy NE1 E1 NE2 E2
+	decom_pair (cons (mp U R) Thy) NewThy /\
+	decom_enc_aenc NewThy NE1 E1 NE2 E2
       )
       (
         insert (mp (blind U V) (blind R T)) E1 NewE1 /\ 
@@ -260,15 +260,16 @@ decom_enc_aenc (cons (mp (sign U V) (sign R T)) Thy) NE1 E1 NE2 E2 :=
 	)
 	(
 	    _if (U = blind U1 U2 /\ R = blind R1 R2 /\ deduce_r Thy2 U2 R2)
-		(
-		    decom_pair (cons (mp (sign U1 V) (sign R1 T)) Thy) NewThy /\ 
-		    decom_enc_aenc NewThy NE1 E1 NE2 E2
-		)
-		(
-		    insert (mp (sign U V) (sign R T)) E1 NewE1 /\
-		    decom_enc_aenc Thy NE1 NewE1 NE2 E2
-		)
-	);
+	      (
+		decom_pair (cons (mp (sign U1 V) (sign R1 T)) Thy) NewThy /\ 
+		decom_enc_aenc NewThy NE1 E1 NE2 E2
+	      )
+	      (
+		insert (mp (sign U V) (sign R T)) E1 NewE1 /\
+		decom_enc_aenc Thy NE1 NewE1 NE2 E2
+	      )
+	) ;
+
 
 decom_enc_aenc (cons X Thy) NE1 E1 NE2 E2 :=
   _not(X = mp (en U V) (en R T) \/ X = mp (aen U V) (aen R T) \/ X = mp (blind U V) (blind R T) \/ X = mp (sign U V) (sign R T) 
@@ -316,8 +317,7 @@ filter_enc (cons X L) (cons X NE) E :=
   filter_enc L NE E.
 
 % RH: Applied theory reductions until no further reductions can be applied.
-Define iter_reduce : list thy_pair -> list thy_pair -> list thy_pair ->
-      		     list thy_pair -> prop
+Define iter_reduce : list thy_pair -> list thy_pair -> list thy_pair -> list thy_pair -> prop
 by 
 iter_reduce NE1 E1 NE2 E2 :=
   decom_enc_aenc E1 NE1 nil NE E /\
@@ -429,22 +429,28 @@ Define thy_cc7 : list thy_pair -> prop
 by
 thy_cc7 Thy :=
   split_thy Thy S1 S2 /\ 
-  forall M N, member (mp (hs M) (hs N)) Thy 
-      -> (ded1_r S1 M -> false) /\ (ded1_r S2 N -> false).
+  forall M1 N1 M2 N2, member (mp (sign M1 N1) (sign M2 N2)) Thy 
+      -> (ded1_r S1 M1 -> false \/ ded1_r S1 N1 -> false) /\ (ded1_r S2 M2 -> false \/ ded1_r S2 N2 -> false) /\
+         ((ded1_r S1 (pub N1) /\ ded1_r S1 M1) \/ (ded1_r S2 (pub N2) /\ ded1_r S2 M2) -> deduce_r Thy (pub N1) (pub N2) /\ deduce_r Thy M1 M2).
+% RH: The above says: if we don't have either message or key then keep the signature. Otherwise, we could reconstruct the signature from the message and key.
+% N.B. We could still construct the signature if we have (sign (blind M1 B1) N1) and (sign (blind M2 B2) N2), where S1 |- B1 and S2 |- B2
+% Also, if we can deduce the public key and the message then the public keys must be identical.
 
 Define thy_cc8 : list thy_pair -> prop
 by
 thy_cc8 Thy :=
   split_thy Thy S1 S2 /\ 
+  forall M N, member (mp (hs M) (hs N)) Thy 
+      -> (ded1_r S1 M -> false) /\ (ded1_r S2 N -> false).
+
+Define thy_cc9 : list thy_pair -> prop
+by
+thy_cc9 Thy :=
+  split_thy Thy S1 S2 /\ 
   forall M1 N1 M2 N2, member (mp (mac M1 N1) (mac M2 N2)) Thy 
-      -> (ded1_r S1 M1 /\ ded1_r S1 N1 -> false) /\ (ded1_r S2 M2 /\ ded1_r S2 N2 -> false).
+      -> (ded1_r S1 M1 -> false \/ ded1_r S1 N1 -> false) /\ (ded1_r S2 M2 -> false \/ ded1_r S2 N2 -> false).
 
 % Consistency condition 3: 
-% thy_cc3 Thy :=
-%  pi M\ pi N\ pi U\ pi V\ 
-%   member (mp M N) Thy, member (mp U V) Thy =>
-%     (M = U => N = V), (N = V => M = U). 
-
 Define thy_cc3 : list thy_pair -> prop 
 by
 thy_cc3 nil ;
@@ -499,8 +505,8 @@ Define thy_consistent : list thy_pair -> prop % RH: not used as far as I can see
 by
 thy_consistent Thy :=
   reduce Thy Thy1 /\ 
-  thy_cc1 Thy1 /\ thy_cc2 Thy1 /\ thy_cc4 Thy1 /\ thy_cc5 Thy1 /\ thy_cc6 Thy1 /\ thy_cc7 Thy1 /\ thy_cc8 Thy1 /\ thy_cc3 Thy1	.
-
+  thy_cc1 Thy1 /\ thy_cc2 Thy1 /\ thy_cc4 Thy1 /\ thy_cc5 Thy1 /\ thy_cc6 Thy1 /\ thy_cc7 Thy1 /\ thy_cc8 Thy1 /\ thy_cc9 Thy1 /\
+  thy_cc3 Thy1	.
 
 % Checking consistency of reduced theories
 Define thy_red_consistent : list thy_pair -> prop 
@@ -508,6 +514,89 @@ by
 thy_red_consistent Thy :=
   thy_cc1 Thy /\
   %thy_cc2_alt Thy /\
-  thy_cc4 Thy /\ thy_cc5 Thy /\ thy_cc6 Thy /\ thy_cc7 Thy /\ thy_cc8 Thy /\
-  thy_cc3 Thy. 
+  thy_cc4 Thy /\ thy_cc5 Thy /\ thy_cc6 Thy /\ thy_cc7 Thy /\ thy_cc8 Thy /\ thy_cc9 Thy /\
+  thy_cc3 Thy.
+
+%
+%
+%
+%
+%
+
+Define thy_cc3_l : list thy_pair -> prop by
+thy_cc3_l nil ;
+thy_cc3_l (cons (mp M N) L) :=
+  (forall U V, member (mp U V) L -> (M = U -> N = V)) /\ thy_cc3_l L.
+
+Define thy_cc3_r : list thy_pair -> prop by
+thy_cc3_r nil ;
+thy_cc3_r (cons (mp M N) L) :=
+  (forall U V, member (mp U V) L -> (N = V -> M = U)) /\ thy_cc3_r L.
+
+Define thy_red_consistent_l : list thy_pair -> prop by
+thy_red_consistent_l Thy :=
+  thy_cc1 Thy /\
+  % Could rewrite split_thy to obtain S1 only
+  split_thy Thy S1 S2 /\
+  % thy_cc2
+  (forall A1 B1 A2 B2, member (mp (en A1 B1) (en A2 B2)) Thy -> (ded1_r S1 B1 -> false)) /\
+  % thy_cc4
+  (forall C1 D1 C2 D2, member (mp (aen C1 (pub D1)) (aen C2 (pub D2))) Thy -> (ded1_r S1 D1 -> false)) /\
+  % thy_cc5
+  (forall E1 E2, member (mp (pub E1) (pub E2)) Thy -> (ded1_r S1 E1 -> false)) /\
+  % thy_cc6
+  (forall F1 G1 F2 G2, member (mp (blind F1 G1) (blind F2 G2)) Thy -> (ded1_r S1 G1 -> false)) /\
+  % thy_cc7
+  (
+    forall H1 I1 H1 I1, member (mp (sign H1 I1) (sign H1 I1)) Thy -> (
+      (ded1_r S1 H1 -> false \/ ded1_r S1 I1 -> false) /\ ((ded1_r S1 H1 /\ ded1_r S1 (pub I1)) -> deduce_r Thy H1 H2 /\ deduce_r Thy (pub I1) (pub I2))
+    )
+  ) /\
+  % thy_cc8
+  (forall J1 J2, member (mp (hs J1) (hs J2)) Thy -> (ded1_r S1 J1 -> false)) /\
+  (forall K1 L1 K2 L2, member (mp (mac K1 L1) (mac K2 L2)) Thy -> (ded1_r S1 M1 -> false \/ ded1_r S1 N1 -> false)) /\
+  % thy_cc3  
+  thy_cc3_l Thy.
+
+Define thy_red_consistent_r : list thy_pair -> prop by
+thy_red_consistent_r Thy :=
+  thy_cc1 Thy /\
+  % Could rewrite split_thy to obtain S1 only
+  split_thy Thy S1 S2 /\
+  % thy_cc2
+  (forall A1 B1 A2 B2, member (mp (en A1 B1) (en A2 B2)) Thy -> (ded1_r S2 B2 -> false)) /\
+  % thy_cc4
+  (forall C1 D1 C2 D2, member (mp (aen C1 (pub D1)) (aen C2 (pub D2))) Thy -> (ded1_r S2 D2 -> false)) /\
+  % thy_cc5
+  (forall E1 E2, member (mp (pub E1) (pub E2)) Thy -> (ded1_r S2 E2 -> false)) /\
+  % thy_cc6
+  (forall F1 G1 F2 G2, member (mp (blind F1 G1) (blind F2 G2)) Thy -> (ded1_r S2 G2 -> false)) /\
+  % thy_cc7
+  (
+    forall H1 I1 H1 I1, member (mp (sign H1 I1) (sign H1 I1)) Thy -> (
+      (ded1_r S2 H2 -> false \/ ded1_r S2 I2 -> false) /\ ((ded1_r S2 H2 /\ ded1_r S2 (pub I2)) -> deduce_r Thy H1 H2 /\ deduce_r Thy (pub I1) (pub I2))
+    )
+  ) /\
+  % thy_cc8
+  (forall J1 J2, member (mp (hs J1) (hs J2)) Thy -> (ded1_r S2 J2 -> false)) /\
+  (forall K1 L1 K2 L2, member (mp (mac K1 L1) (mac K2 L2)) Thy -> (ded1_r S2 M2 -> false \/ ded1_r S2 N2 -> false)) /\
+  % thy_cc3  
+  thy_cc3_r Thy.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
