@@ -19,31 +19,36 @@
 
 #include "print_text.def".
 
-Define bt2text : string -> list bt_pair -> prop
-by 
-bt2text File nil ; 
-bt2text File (cons (in M N) L) :=
- fprintstr File "(" /\  term2text File M /\ fprintstr File " , " /\ 
- term2text File N /\ fprintstr File ")^i. \n" /\ 
- bt2text File L ; 
-bt2text File (cons (out M N) L) := 
- fprintstr File "(" /\ term2text File M /\ fprintstr File " , " /\ term2text File N /\ 
- fprintstr File ")^o. \n" /\ bt2text File L.
 
-Define print_bt_text : string -> list bt_pair -> prop
+Define fthy : string -> list thy_pair -> prop 
 by 
-print_bt_text File nil := fprintstr File "[ ]\n" ; 
-print_bt_text File (cons X L) :=
- bt2text File (cons X L) /\  
+fthy File nil ; 
+fthy File (cons (mp M N) nil) := 
+  fprintstr File "(" /\ term2text File M /\ fprintstr File ", " /\ term2text File N /\ fprintstr File ") " ; 
+fthy File (cons (mp M N) (cons P L)) :=
+  fprintstr File "(" /\ term2text File M /\ fprintstr File ", " /\ term2text File N /\ fprintstr File "), " /\
+  fthy File (cons P L).
+
+Define print_thy_text : string -> list thy_pair -> prop
+by 
+print_thy_text File nil := fprintstr File "[ ]\n" ; 
+print_thy_text File (cons X L) :=
+ fthy File (cons X L) /\  
  fprintstr File " \n".
+
 
 Define bisim2text : string -> prop -> prop
 by 
-bisim2text File (bisim H P Q) :=
- fprintstr File "Bi-trace: \n" /\  
- print_bt_text File H /\  
+bisim2text File (bisim Vs Thy Cs P Q) :=
+ fprintstr File "Observer Theory: \n" /\  
+ print_thy_text File Thy /\  
+ fprintstr File "Constraints: (needs to be implemented) \n" /\  
+ % Need to print constraints here.
  fprintstr File "First process: \n" /\  
  print_proc_text File P /\  
  fprintstr File "Second process: \n" /\ 
  print_proc_text File Q /\ 
  fprintstr File "\n".
+
+
+

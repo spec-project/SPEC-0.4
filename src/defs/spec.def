@@ -42,11 +42,13 @@ agent_def X Y := false.
 
 Define show_bisim : string -> prop -> prop
 by 
-show_bisim N (bisim H P Q) := 
+show_bisim N (bisim Vs Thy Cs P Q) := 
      printstr N /\ printstr ". \n" /\
-     printstr "Bitrace: " /\ print_bitrace H /\ printstr "\n" /\
+     printstr "Observer theory: " /\ pthy Thy /\ printstr "\n" /\
+     printstr "Constraints: " /\ print_cst_pair_list Cs /\ %printstr "\n" /\
      printstr "First process: " /\ print_proc P /\ printstr "\n" /\
      printstr "Second process: " /\ print_proc Q /\ printstr "\n".
+
 
 Define save_bisim : X -> Y -> prop -> prop 
 by 
@@ -248,12 +250,16 @@ check_def A :=
 
 
 % RH: Added for open progressing bisimulation.
-Define  bisim_def : list bt_pair -> def_body -> def_body -> prop by
-bisim_def H (defAbs x\A x) (defAbs x\B x) :=
-  nabla x, exists H1,
-   append H (cons (in (var x) (var x)) nil) H1 /\ 
-   bisim_def H1 (A (var x)) (B (var x)) ;
-bisim_def H (defProc P) (defProc Q) :=
+Define  bisim_def : list tm -> def_body -> def_body -> prop by
+%bisim_def H (defAbs x\A x) (defAbs x\B x) :=
+%  nabla x, exists H1,
+%   append H (cons (in (var x) (var x)) nil) H1 /\ 
+%   bisim_def H1 (A (var x)) (B (var x)) ;
+bisim_def Vs (defAbs x\A x) (defAbs x\B x) :=
+  nabla x, exists Vs1,
+   append Vs (cons (var x) nil) Vs1 /\ 
+   bisim_def Vs1 (A (var x)) (B (var x)) ;
+bisim_def Vs (defProc P) (defProc Q) :=
   expand_defs P R /\ 
   expand_defs Q T /\
   _if (progressing_opt)
@@ -267,7 +273,9 @@ bisim_def H (defProc P) (defProc Q) :=
   print_proc R /\ printstr "\n" /\
   printstr " and \n" /\ 
   print_proc T /\ printstr "\n" /\
-  bisim H R T.
+  universal Vs Cs /\
+  bisim Vs nil Cs P Q.
+  %bisim H R T.
 
 % Add key cycle
 Define  keycycle_def : def_body -> prop by

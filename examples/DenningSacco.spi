@@ -1,0 +1,64 @@
+%% Credits to Stéphanie Delaune, Véronique Cortier and Antoine Dallon.
+
+%% Denning Sacco symmetric key
+%%  A -> S : A, B
+%%  S -> A : {B, Kab, {Kab,A}Kbs }Kas
+%%  A -> B : {Kab, A }Kbs
+
+%% Secrecy of the key Kab (from the point of view of A)
+%% encoded as a combination of key usability and “which key-concealing”
+%% A -> : {m1}Kab vs {m2}K with K fresh and m1/m2 public constants
+
+%% Scenario: 
+%% one honest session between a, b, and s 
+%% one instance of A played by a with c (dishonest)
+%% one intance of B played by b with c (dishonest)
+%% two additional instances of S played with a/c and c/b
+
+
+
+
+A1(ca,a,b,kas,m1) :=
+ ca<<a,b>>.
+ ca(x).
+ case x of enc(y,kas) in
+ let <y1,y2> = y in
+ let <y11,y12> = y1 in
+ [y11=b]
+ ca<y2>.
+ ca<enc(m1,y12)>;
+
+A2(ca,a,b,kas,m2) :=
+ ca<<a,b>>.
+ ca(x).
+ case x of enc(y,kas) in
+ let <y1,y2> = y in
+ let <y11,y12> = y1 in
+ [y11=b]
+ ca<y2>.
+ nu(k).
+ ca<enc(m2,k)>;
+
+ 
+ 
+S(cs,a,b,kas,kbs) := 
+ cs(x).
+ [x = <a,b>]
+  nu(kab).
+ cs<enc(<<b,kab>,enc(<kab,a>,kbs)>,kas)>;
+
+
+ 
+P(a,b,c,kcs,ca1,cs2,m1) :=  nu(kas,kbs). (
+A1{ca1,a,b,kas,m1} | S{cs2,a,c,kas,kcs}
+) ;
+
+Q(a,b,c,kcs,ca1,cs2,m2) :=  nu(kas,kbs). (
+A2{ca1,a,b,kas,m2} | S{cs2,a,c,kas,kcs}
+) ;
+
+% Query
+% bisim(nu(a,b,c,kcs,ca1,cs2,m2).out<<a,b,c,kcs,ca1,cs2,m2>>.P{a,b,c,kcs,ca1,cs2,m1},nu(a,b,c,kcs,ca1,cs2,m2).out<<a,b,c,kcs,ca1,cs2,m2>>.Q{a,b,c,kcs,ca1,cs2,m2});
+
+
+%show_bisim;

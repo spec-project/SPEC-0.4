@@ -19,36 +19,33 @@
 
 #include "print_latex.def".
 
-Define bt2latex : string -> list bt_pair -> prop
+Define thy2latex : string -> list thy_pair -> prop 
 by 
-bt2latex File nil ; 
-bt2latex File (cons (in M N) L) :=
- fprintstr File "(" /\ term2latex File M /\ 
- fprintstr File "~ , ~ " /\ term2latex File N /\ 
- fprintstr File ")^i. \\\\ \n" /\
- bt2latex File L ; 
-bt2latex File (cons (out M N) L) := 
- fprintstr File "(" /\ term2latex File M /\ 
- fprintstr File "~ , ~ " /\ term2latex File N /\ fprintstr File ")^o. \\\\ \n" /\
- bt2latex File L.
+thy2latex File nil ; 
+thy2latex File (cons (mp M N) nil) := 
+  fprintstr File "(" /\ term2latex File M /\ fprintstr File "~ , ~ " /\ term2latex File N /\ fprintstr File ") \\\\ \n" ; 
+thy2latex File (cons (mp M N) (cons P L)) :=
+  fprintstr File "(" /\ term2latex File M /\ fprintstr File "~ , ~" /\ term2latex File N /\ fprintstr File "), \\\\ \n" /\
+  thy2latex File (cons P L).
 
-Define print_bt_latex : string -> list bt_pair -> prop
+Define print_thy_latex : string -> list thy_pair -> prop
 by 
-print_bt_latex File nil := 
- fprintstr File "$[~]$\n" ; 
-print_bt_latex File (cons X L) :=
+print_thy_latex File nil := fprintstr File "$[~]$\n" ; 
+print_thy_latex File (cons X L) :=
  fprintstr File "$$\n" /\ 
  fprintstr File "\\begin{array}{l}\n" /\ 
- bt2latex File (cons X L) /\ 
+ thy2latex File (cons X L) /\  
  fprintstr File "\\end{array}\n" /\ 
  fprintstr File "$$\n\n\n".
 
 Define bisim2latex : string -> prop -> prop
 by 
-bisim2latex File (bisim H P Q) :=
- fprintstr File "Bi-trace: \n" /\ 
- print_bt_latex File H /\ 
+bisim2latex File (bisim Vs Thy Cs P Q) :=
+ fprintstr File "Observer theory: \n" /\ 
+ print_thy_latex File Thy /\ 
  fprintstr File "\n" /\
+ fprintstr File "Observer theory: (needs to be implemented) \n" /\ 
+ % Needs to be implemented.
  fprintstr File "First process: \n" /\ 
  print_proc_latex File P /\ 
  fprintstr File "\n" /\ 
